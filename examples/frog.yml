@@ -1,0 +1,5 @@
+---
+
+datasource: "amqp://guest:guest@localhost:5672"
+targets:
+  - "my-exchange:my-routing-key"
