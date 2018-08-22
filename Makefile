@@ -20,7 +20,6 @@ deps:
 
 build:
 	@echo ">> building binaries"
-	@go run cmd/gen/main.go
 	@go build -ldflags $(ldflags) -o $(build_dir)/$(project_name) main.go
 
 build-all:
@@ -30,7 +29,7 @@ build-all:
 	@for os in "linux" "darwin" ; do \
 			for arch in "amd64" "386" "arm" "arm64" ; do \
 					echo " > building $$os/$$arch" ; \
-					GOOS=$$os GOARCH=$$arch go build -ldflags $(ldflags) -o $(build_dir)/$(project_name).$(version).$$os-$$arch cmd/$(project_name)/main.go ; \
+					GOOS=$$os GOARCH=$$arch go build -ldflags $(ldflags) -o $(build_dir)/$(project_name).$(version).$$os-$$arch main.go ; \
 			done ; \
 	done
 
