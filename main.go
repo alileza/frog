@@ -73,7 +73,28 @@ func main() {
 
 	webErrChan := make(chan error)
 	go func(errChan chan error) {
-		errChan <- http.ListenAndServe(listenAddr, storageClient.Handler())
+		mux := http.NewServeMux()
+		mux.Handle("/", storageClient.Handler())
+		mux.Handle("/active", consumerClient.Handler())
+		mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			exchange := r.FormValue("exchange")
+			routingKey := r.FormValue("routingKey")
+			if exchange == "" {
+				fmt.Fprintf(w, `exchange is required`)
+				return
+			}
+			if routingKey == "" {
+				fmt.Fprintf(w, `routingKey is required`)
+				return
+			}
+			if err := consumerClient.Consume(exchange + ":" + routingKey); err != nil {
+				fmt.Fprintf(w, err.Error())
+				return
+			}
+			fmt.Fprintf(w, `Registered please check your message <a href="/">here</a>`)
+		})
+		errChan <- http.ListenAndServe(listenAddr, mux)
 	}(webErrChan)
 
 	term := make(chan os.Signal)

@@ -6,6 +6,53 @@ import (
 	"reflect"
 )
 
+type Diff struct {
+	Field  string
+	ValueA string
+	ValueB string
+}
+
+func Cmp(A, B map[string]interface{}, parentKey string) ([]Diff, error) {
+	result := make([]Diff, 0)
+
+	for key := range A {
+		a := A[key]
+		at := reflect.TypeOf(a)
+
+		b, ok := B[key]
+		if !ok {
+			if at.Kind() == reflect.Map {
+				a = at.String()
+			}
+			if a.(string) == "*" {
+				continue
+			}
+
+			result = append(result, Diff{parentKey + "." + key, a.(string), "missing"})
+			continue
+		}
+
+		if at.Kind() == reflect.Map {
+			diffs, err := Cmp(a.(map[string]interface{}), b.(map[string]interface{}), key)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, diffs...)
+			continue
+		}
+
+		if b.(string) == "*" {
+			continue
+		}
+
+		if a != b {
+			result = append(result, Diff{parentKey + "." + key, a.(string), b.(string)})
+		}
+	}
+
+	return result, nil
+}
+
 func ToMap(b []byte) (map[string]interface{}, error) {
 	res := make(map[string]interface{})
 	if err := json.Unmarshal(b, &res); err != nil {

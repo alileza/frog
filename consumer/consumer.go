@@ -1,8 +1,10 @@
 package consumer
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 
@@ -49,48 +51,64 @@ func (c *Consumer) Run() {
 		return
 	}
 
+	for _, target := range c.options.Targets {
+		if err := c.Consume(target); err != nil {
+			c.listenErrChan <- err
+		}
+	}
+}
+
+func (c *Consumer) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := json.Marshal(c.registeredQueue)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(b)
+	})
+}
+
+func (c *Consumer) Consume(target string) error {
 	ch, err := c.conn.Channel()
 	if err != nil {
-		c.listenErrChan <- err
-		return
+		return err
 	}
 
-	for _, target := range c.options.Targets {
-		exchange, routingKey := split(target)
-		if err := exchangeDeclare(ch, exchange); err != nil {
-			c.listenErrChan <- err
-			return
-		}
+	exchange, routingKey := split(target)
+	if err := exchangeDeclare(ch, exchange); err != nil {
+		return err
+	}
 
-		q, err := queueDeclare(ch, queueName(exchange, routingKey))
-		if err != nil {
-			c.listenErrChan <- err
-			return
-		}
-		c.registeredQueue = append(c.registeredQueue, q.Name)
+	q, err := queueDeclare(ch, queueName(exchange, routingKey))
+	if err != nil {
+		return err
+	}
+	c.registeredQueue = append(c.registeredQueue, q.Name)
 
-		err = queueBind(ch, q.Name, exchange, routingKey)
-		if err != nil {
-			c.listenErrChan <- err
-			return
-		}
+	err = queueBind(ch, q.Name, exchange, routingKey)
+	if err != nil {
+		return err
+	}
 
-		msgs, err := consume(ch, q.Name)
-		if err != nil {
-			c.listenErrChan <- err
-			return
-		}
+	msgs, err := consume(ch, q.Name)
+	if err != nil {
+		return err
+	}
 
-		go func(msgs <-chan amqp.Delivery, target string) {
-			for d := range msgs {
-				fmt.Println(target, string(d.Body))
-				c.listenMsgChan <- &Message{
-					Target: target,
-					Body:   d.Body,
-				}
+	go func(msgs <-chan amqp.Delivery, ch *amqp.Channel, target, qName string) {
+		var counter int64
+		for d := range msgs {
+			c.listenMsgChan <- &Message{
+				Target: target,
+				Body:   d.Body,
 			}
-		}(msgs, target)
-	}
+			counter++
+			if counter >= 100 {
+				break
+			}
+		}
+		ch.QueueDelete(qName, false, false, false)
+	}(msgs, ch, target, q.Name)
+
+	return nil
 }
 
 func (c *Consumer) Close() {

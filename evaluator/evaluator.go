@@ -1,6 +1,8 @@
 package evaluator
 
 import (
+	stdjson "encoding/json"
+	"errors"
 	"sync"
 
 	"github.com/alileza/frog/util/json"
@@ -48,12 +50,25 @@ func (e *Evaluator) Eval(name string, body []byte) *Report {
 			Error:  err,
 		}
 	}
+	prevBodySchemaMap, err := json.ToMap(prevBodySchema)
+	if err != nil {
+		panic(err)
+	}
+	bodySchemaMap, err := json.ToMap(bodySchema)
+	if err != nil {
+		panic(err)
+	}
 
-	err = json.Compare(prevBodySchema, bodySchema)
+	diffs, err := json.Cmp(prevBodySchemaMap, bodySchemaMap, "")
+	if err != nil {
+		panic(err)
+	}
+
+	diff, _ := stdjson.Marshal(diffs)
 	return &Report{
 		Name:   name,
 		Body:   body,
 		Schema: bodySchema,
-		Error:  err,
+		Error:  errors.New(string(diff)),
 	}
 }
